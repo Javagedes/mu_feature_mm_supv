@@ -67,8 +67,8 @@ EFI_SM_MONITOR_INIT_PROTOCOL  mSmMonitorInitProtocol = {
 // Global variables and symbols pulled in from MmSupervisor
 //
 extern BOOLEAN  mCetSupported;
-extern BOOLEAN  gPatchXdSupported;
-extern BOOLEAN  gPatchMsrIa32MiscEnableSupported;
+extern X86_ASSEMBLY_PATCH_LABEL  gPatchXdSupported;
+extern X86_ASSEMBLY_PATCH_LABEL  gPatchMsrIa32MiscEnableSupported;
 extern BOOLEAN  m5LevelPagingNeeded;
 
 extern UINT32  mCetPl0Ssp;
@@ -627,8 +627,8 @@ SmmCpuFeaturesInstallSmiHandler (
   Fixup64Ptr[FIXUP64_CET_SUPPORTED]    = (UINT64)&mCetSupported;
   Fixup64Ptr[FIXUP64_SMI_HANDLER_IDTR] = (UINT64)&gStmSmiHandlerIdtr;
 
-  Fixup8Ptr[FIXUP8_gPatchXdSupported]                = gPatchXdSupported;
-  Fixup8Ptr[FIXUP8_gPatchMsrIa32MiscEnableSupported] = gPatchMsrIa32MiscEnableSupported;
+  Fixup8Ptr[FIXUP8_gPatchXdSupported]                = (UINT8)(UINTN)gPatchXdSupported;
+  Fixup8Ptr[FIXUP8_gPatchMsrIa32MiscEnableSupported] = (UINT8)(UINTN)gPatchMsrIa32MiscEnableSupported;
   Fixup8Ptr[FIXUP8_m5LevelPagingNeeded]              = m5LevelPagingNeeded;
   Fixup8Ptr[FIXUP8_mPatchCetSupported]               = mCetSupported;
 
