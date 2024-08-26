@@ -10,7 +10,7 @@
 #
 ##
 
-#Override : 00000002 | UefiCpuPkg/PiSmmCpuDxeSmm/PiSmmCpuDxeSmm.inf | eae88f226ab8dbfb651122bad139aac7 | 2024-08-23T18-27-20 | f62e876b82ff597e919f70176c47e7e7be8e737a
+#Override : 00000002 | UefiCpuPkg/PiSmmCpuDxeSmm/X64/SmiEntry.nasm | 68a7daa8193849e6f52ed3637bc68338 | 2024-08-26T07-53-30 | f62e876b82ff597e919f70176c47e7e7be8e737a
 
 [Defines]
   INF_VERSION                    = 0x0001001A
