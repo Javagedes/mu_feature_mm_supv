@@ -1,4 +1,8 @@
 /** @file
+  Validation functions for PE/COFF image against a reference auxiliary file. 
+*/
+
+/** @file
   This library abstract TPM2 hash calculation.
   The platform can choose multiply hash, while caller just need invoke these API.
   Then all hash value will be returned and/or extended.

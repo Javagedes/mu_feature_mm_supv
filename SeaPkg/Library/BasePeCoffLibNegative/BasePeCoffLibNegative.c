@@ -29,6 +29,7 @@
 #include <Library/BaseMemoryLib.h>
 #include <Library/DebugLib.h>
 #include <Library/PeCoffExtraActionLib.h>
+#include <Library/PeCoffValidationLib.h>
 #include <Library/SafeIntLib.h>
 #include <Library/PeCoffLibNegative.h>
 #include <IndustryStandard/PeImage.h>
@@ -828,42 +829,19 @@ PeCoffImageDiffValidation (
       return EFI_INVALID_PARAMETER;
     }
 
+    // TODO: Turn this into a lookup table for Validation type. All functions hsould have the same signature
     switch (ImageValidationEntryHdr->ValidationType) {
       case IMAGE_VALIDATION_ENTRY_TYPE_NONE:
         NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)(ImageValidationEntryHdr + 1);
         Status                      = EFI_SUCCESS;
         break;
       case IMAGE_VALIDATION_ENTRY_TYPE_NON_ZERO:
-        if (IsZeroBuffer ((UINT8 *)TargetImage + ImageValidationEntryHdr->Offset, ImageValidationEntryHdr->Size)) {
-          DEBUG ((DEBUG_ERROR, "%a: Current entry range 0x%p: 0x%x is all 0s\n", __func__, (UINT8 *)TargetImage + ImageValidationEntryHdr->Offset, ImageValidationEntryHdr->Size));
-          Status = EFI_SECURITY_VIOLATION;
-        } else {
-          NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)(ImageValidationEntryHdr + 1);
-        }
-
+        Status = PeCoffImageValidationNonZero (TargetImage, ImageValidationEntryHdr);
+        NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)(ImageValidationEntryHdr + 1);
         break;
       case IMAGE_VALIDATION_ENTRY_TYPE_CONTENT:
-        ImageValidationEntryContent = (IMAGE_VALIDATION_CONTENT *)(ImageValidationEntryHdr);
-        if (sizeof (*ImageValidationEntryContent) + ImageValidationEntryHdr->Size > ReferenceDataSize) {
-          DEBUG ((
-            DEBUG_ERROR,
-            "%a: Current entry range 0x%p: 0x%x exceeds reference data limit 0x%x\n",
-            __func__,
-            ImageValidationEntryContent,
-            sizeof (*ImageValidationEntryContent) + ImageValidationEntryHdr->Size,
-            ReferenceDataSize
-            ));
-          Status = EFI_COMPROMISED_DATA;
-          break;
-        }
-
-        if (CompareMem ((UINT8 *)TargetImage + ImageValidationEntryHdr->Offset, ImageValidationEntryContent->TargetContent, ImageValidationEntryHdr->Size) != 0) {
-          DEBUG ((DEBUG_ERROR, "%a: Current entry range 0x%p: 0x%x does not match input content at 0x%p\n", __func__, ImageValidationEntryContent, ImageValidationEntryHdr->Size, ImageValidationEntryContent->TargetContent));
-          Status = EFI_SECURITY_VIOLATION;
-        } else {
-          NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)((UINT8 *)(ImageValidationEntryHdr + 1) + ImageValidationEntryHdr->Size);
-        }
-
+        Status = PeCoffImageValidationContent (TargetImage, ImageValidationEntryHdr);
+        NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)((UINT8 *)(ImageValidationEntryContent + 1) + ImageValidationEntryHdr->Size);
         break;
       case IMAGE_VALIDATION_ENTRY_TYPE_MEM_ATTR:
         ImageValidationEntryMemAttr = (IMAGE_VALIDATION_MEM_ATTR *)(ImageValidationEntryHdr);
