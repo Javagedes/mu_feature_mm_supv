@@ -30,6 +30,7 @@
 #include <Library/DebugLib.h>
 #include <Library/PeCoffExtraActionLib.h>
 #include <Library/SafeIntLib.h>
+#include <Library/PeCoffValidationLib.h>
 #include <Library/PeCoffLibNegative.h>
 #include <IndustryStandard/PeImage.h>
 
@@ -684,71 +685,6 @@ PeCoffLoaderImageNegativeReadFromMemory (
   return RETURN_SUCCESS;
 }
 
-EFI_STATUS
-EFIAPI
-GetMemoryAttributes (
-  IN  EFI_PHYSICAL_ADDRESS  PageTableBase,
-  IN  EFI_PHYSICAL_ADDRESS  BaseAddress,
-  IN  UINT64                Length,
-  OUT UINT64                *Attributes
-  );
-
-/**
-  Helper function that will evaluate the page where the input address is located belongs to a
-  user page that is mapped inside MM.
-
-  @param  Address           Target address to be inspected.
-  @param  Size              Address range to be inspected.
-  @param  IsUserRange       Pointer to hold inspection result, TRUE if the region is in User pages, FALSE if
-                            the page is in supervisor pages. Should not be used if return value is not EFI_SUCCESS.
-
-  @return     The result of inspection operation.
-
-**/
-EFI_STATUS
-InspectTargetRangeAttribute (
-  IN  EFI_PHYSICAL_ADDRESS  PageTableBase,
-  IN  EFI_PHYSICAL_ADDRESS  Address,
-  IN  UINTN                 Size,
-  OUT UINT64                *MemAttribute
-  )
-{
-  EFI_STATUS            Status;
-  EFI_PHYSICAL_ADDRESS  AlignedAddress;
-  UINT64                Attributes;
-
-  if ((Address < EFI_PAGE_SIZE) || (Size == 0) || (MemAttribute == NULL)) {
-    Status = EFI_INVALID_PARAMETER;
-    goto Done;
-  }
-
-  AlignedAddress = ALIGN_VALUE (Address - EFI_PAGE_SIZE + 1, EFI_PAGE_SIZE);
-
-  // To cover head portion from "Address" alignment adjustment
-  Status = SafeUintnAdd (Size, Address - AlignedAddress, &Size);
-  if (EFI_ERROR (Status)) {
-    goto Done;
-  }
-
-  // To cover the tail portion of requested buffer range
-  Status = SafeUintnAdd (Size, EFI_PAGE_SIZE - 1, &Size);
-  if (EFI_ERROR (Status)) {
-    goto Done;
-  }
-
-  Size &= ~(EFI_PAGE_SIZE - 1);
-
-  // Go through page table and grab the entry attribute
-  Status = GetMemoryAttributes (PageTableBase, AlignedAddress, Size, &Attributes);
-  if (!EFI_ERROR (Status)) {
-    *MemAttribute = Attributes;
-    goto Done;
-  }
-
-Done:
-  return Status;
-}
-
 /**
   Revert fixups and global data changes to an executed PE/COFF image that was loaded
   with PeCoffLoaderLoadImage() and relocated with PeCoffLoaderRelocateImage().
@@ -782,8 +718,6 @@ PeCoffImageDiffValidation (
   IMAGE_VALIDATION_ENTRY_HEADER  *NextImageValidationEntryHdr;
   IMAGE_VALIDATION_MEM_ATTR      *ImageValidationEntryMemAttr;
   IMAGE_VALIDATION_SELF_REF      *ImageValidationEntrySelfRef;
-  IMAGE_VALIDATION_CONTENT       *ImageValidationEntryContent;
-  UINT64                         MemAttr;
   UINTN                          Index;
   EFI_STATUS                     Status;
   EFI_PHYSICAL_ADDRESS           AddrInTarget;
@@ -843,111 +777,20 @@ PeCoffImageDiffValidation (
 
     switch (ImageValidationEntryHdr->ValidationType) {
       case IMAGE_VALIDATION_ENTRY_TYPE_NONE:
+        Status                      = EFI_SUCCESS;  
         NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)(ImageValidationEntryHdr + 1);
-        Status                      = EFI_SUCCESS;
         break;
       case IMAGE_VALIDATION_ENTRY_TYPE_NON_ZERO:
-        if (IsZeroBuffer ((UINT8 *)TargetImage + ImageValidationEntryHdr->Offset, ImageValidationEntryHdr->Size)) {
-          DEBUG ((DEBUG_ERROR, "%a: Current entry range 0x%p: 0x%x is all 0s\n", __func__, (UINT8 *)TargetImage + ImageValidationEntryHdr->Offset, ImageValidationEntryHdr->Size));
-          Status = EFI_SECURITY_VIOLATION;
-        } else {
-          NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)(ImageValidationEntryHdr + 1);
-        }
-
+        Status                      = PeCoffImageValidationNonZero (TargetImage, ImageValidationEntryHdr);
+        NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)(ImageValidationEntryHdr + 1);
         break;
       case IMAGE_VALIDATION_ENTRY_TYPE_CONTENT:
-        ImageValidationEntryContent = (IMAGE_VALIDATION_CONTENT *)(ImageValidationEntryHdr);
-        // Ensure "Content" in the header (TargetContent) does not overflow the Auxiliary file buffer.
-        if ((UINT8 *)ImageValidationEntryContent + sizeof (*ImageValidationEntryContent) + ImageValidationEntryHdr->Size > (UINT8 *)ReferenceData + ReferenceDataSize) {
-          DEBUG ((
-            DEBUG_ERROR,
-            "%a: Current entry range 0x%p: 0x%x exceeds reference data limit 0x%x\n",
-            __func__,
-            ImageValidationEntryContent,
-            sizeof (*ImageValidationEntryContent) + ImageValidationEntryHdr->Size,
-            ReferenceDataSize
-            ));
-          Status = EFI_COMPROMISED_DATA;
-          break;
-        }
-
-        if (CompareMem ((UINT8 *)TargetImage + ImageValidationEntryHdr->Offset, ImageValidationEntryContent->TargetContent, ImageValidationEntryHdr->Size) != 0) {
-          DEBUG ((DEBUG_ERROR, "%a: Current entry range 0x%p: 0x%x does not match input content at 0x%p\n", __func__, ImageValidationEntryContent, ImageValidationEntryHdr->Size, ImageValidationEntryContent->TargetContent));
-          Status = EFI_SECURITY_VIOLATION;
-        } else {
-          NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)((UINT8 *)(ImageValidationEntryHdr + 1) + ImageValidationEntryHdr->Size);
-        }
-
+        Status                      = PeCoffImageValidationContent (TargetImage, ImageValidationEntryHdr, (UINTN)((UINT8 *)ReferenceData + ReferenceDataSize));
+        NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)((UINT8 *)(ImageValidationEntryHdr + 1) + ImageValidationEntryHdr->Size);
         break;
       case IMAGE_VALIDATION_ENTRY_TYPE_MEM_ATTR:
-        ImageValidationEntryMemAttr = (IMAGE_VALIDATION_MEM_ATTR *)(ImageValidationEntryHdr);
-        if ((ImageValidationEntryMemAttr->TargetMemoryAttributeMustHave == 0) && (ImageValidationEntryMemAttr->TargetMemoryAttributeMustNotHave == 0)) {
-          DEBUG ((
-            DEBUG_ERROR,
-            "%a: Current entry 0x%p has invalid must have 0x%x and must not have 0x%x\n",
-            __func__,
-            ImageValidationEntryMemAttr,
-            ImageValidationEntryMemAttr->TargetMemoryAttributeMustHave,
-            ImageValidationEntryMemAttr->TargetMemoryAttributeMustNotHave
-            ));
-          Status = EFI_COMPROMISED_DATA;
-          break;
-        }
-
-        // Inspection of the memory attributes of the target image
-        if (ImageValidationEntryHdr->Size > sizeof (AddrInTarget)) {
-          DEBUG ((
-            DEBUG_ERROR,
-            "%a: A new cfg entry is larger than a memory address!  Only pointers can have their memory attributes validated!  Address: %p, Address size: %x, Entry Size: %x\n",
-            __func__,
-            AddrInTarget,
-            sizeof (AddrInTarget),
-            ImageValidationEntryHdr->Size
-            ));
-          Status = EFI_BAD_BUFFER_SIZE;
-          break;
-        }
-
-        AddrInTarget = 0;
-        CopyMem (&AddrInTarget, (UINT8 *)TargetImage + ImageValidationEntryHdr->Offset, ImageValidationEntryHdr->Size);
-        Status = InspectTargetRangeAttribute (
-                   PageTableBase,
-                   AddrInTarget,
-                   ImageValidationEntryMemAttr->TargetMemorySize,
-                   &MemAttr
-                   );
-        if (EFI_ERROR (Status)) {
-          DEBUG ((
-            DEBUG_ERROR,
-            "%a: Failed to read memory attribute of 0x%p: 0x%x for entry at 0x%p - %r\n",
-            __func__,
-            AddrInTarget,
-            ImageValidationEntryMemAttr->TargetMemorySize,
-            ImageValidationEntryMemAttr,
-            Status
-            ));
-          break;
-        }
-
-        // Check if the memory attributes of the target image meet the requirements
-        if (((MemAttr & ImageValidationEntryMemAttr->TargetMemoryAttributeMustHave) != ImageValidationEntryMemAttr->TargetMemoryAttributeMustHave) &&
-            ((MemAttr & ImageValidationEntryMemAttr->TargetMemoryAttributeMustNotHave) != 0))
-        {
-          DEBUG ((
-            DEBUG_ERROR,
-            "%a: Current entry range 0x%p: 0x%x attribute 0x%x violated aux file specification must have 0x%x and must not have 0x%x\n",
-            __func__,
-            ImageValidationEntryHdr,
-            ImageValidationEntryHdr->Size,
-            MemAttr,
-            ImageValidationEntryMemAttr->TargetMemoryAttributeMustHave,
-            ImageValidationEntryMemAttr->TargetMemoryAttributeMustNotHave
-            ));
-          Status = EFI_SECURITY_VIOLATION;
-        } else {
-          NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)(ImageValidationEntryMemAttr + 1);
-        }
-
+        Status                      = PeCoffImageValidationMemAttr (TargetImage, ImageValidationEntryHdr, PageTableBase);
+        NextImageValidationEntryHdr = (IMAGE_VALIDATION_ENTRY_HEADER *)(ImageValidationEntryMemAttr + 1);
         break;
       case IMAGE_VALIDATION_ENTRY_TYPE_SELF_REF:
         ImageValidationEntrySelfRef = (IMAGE_VALIDATION_SELF_REF *)(ImageValidationEntryHdr);

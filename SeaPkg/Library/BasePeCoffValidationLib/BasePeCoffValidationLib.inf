@@ -1,0 +1,29 @@
+## @file
+#  TODO
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = BasePeCoffValidationLib
+  FILE_GUID                      = 065ABD42-6822-4F49-9A27-0384445EAAFE
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = PeCoffValidationLib
+
+#
+#  VALID_ARCHITECTURES           = IA32 X64 EBC ARM AARCH64
+#
+
+[Sources]
+  Validation.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  SeaPkg/SeaPkg.dec
+
+[LibraryClasses]
+  DebugLib
+  BaseMemoryLib
+

@@ -66,6 +66,7 @@
   StmPlatformLib
   PeCoffLib
   PeCoffLibNegative
+  PeCoffValidationLib
   HashLib
   SafeIntLib
   SecurePolicyLib

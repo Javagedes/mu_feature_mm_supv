@@ -22,6 +22,7 @@
 #include <Library/PcdLib.h>
 #include <Library/PeCoffLib.h>
 #include <Library/PeCoffLibNegative.h>
+#include <Library/PeCoffValidationLib.h>
 #include <Library/SafeIntLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/MemoryAllocationLib.h>

@@ -27,6 +27,7 @@
   BaseMemoryLib|MdePkg/Library/BaseMemoryLibRepStr/BaseMemoryLibRepStr.inf
   PciLib|MdePkg/Library/BasePciLibPciExpress/BasePciLibPciExpress.inf
   PciExpressLib|MdePkg/Library/BasePciExpressLib/BasePciExpressLib.inf
+  PeCoffValidationLib|SeaPkg/Library/BasePeCoffValidationLib/BasePeCoffValidationLib.inf
   RegisterFilterLib|MdePkg/Library/RegisterFilterLibNull/RegisterFilterLibNull.inf
   RngLib|MdePkg/Library/BaseRngLib/BaseRngLib.inf
   StackCheckFailureHookLib|MdePkg/Library/StackCheckFailureHookLibNull/StackCheckFailureHookLibNull.inf
